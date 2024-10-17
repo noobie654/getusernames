@@ -1,98 +1,69 @@
-from telethon import TelegramClient, events, Button
-from telethon.tl.types import PeerChannel, Channel
+const TelegramBot = require('node-telegram-bot-api');
 
-# Replace with your actual API ID, Hash, and Bot Token
-api_id = '23748760'  # Example: '123456'
-api_hash = '5350341c03ca519c0945a02d8a6c8036'  # Example: 'abcdef1234567890abcdef1234567890'
-bot_token = '7475923472:AAGI5k2w-KglPQiTLQqe1VWrysmVtnSdHIk'  # Example: '123456789:ABCdefGHIjklmnopQRStuvWXYZ'
+// Replace with your actual API Token
+const token = '7475923472:AAGI5k2w-KglPQiTLQqe1VWrysmVtnSdHIk'; // Bot token
 
-# Create the bot client
-client = TelegramClient('GU_Noobieshop_bot', api_id, api_hash).start(bot_token=bot_token)
+// Create the bot client
+const bot = new TelegramBot(token, { polling: true });
 
-# Set the passwords
-BOT_PASSWORDS = ['@Antor1040', '@NoobieNoiso', '@RionMental26']  # List of passwords
+// Set the passwords
+const BOT_PASSWORDS = ['@Antor1040', '@NoobieNoiso', '@RionMental26']; // List of passwords
 
-# Dictionary to store which users have unlocked the bot
-unlocked_users = {}
+// Dictionary to store which users have unlocked the bot
+let unlockedUsers = {};
 
-# Start event handler
-@client.on(events.NewMessage(pattern='/start'))
-async def start(event):
-    await event.respond(
-        "Welcome to GU_Noobieshop Bot! Please get the password from the admin:\n"
-        "Contact Support: [Noobie Support](https://t.me/NoobieXNoiso)\n"
-        "Join our Channel: [Noobie Channel](https://t.me/NoobieShopp)",
-        parse_mode='markdown'
-    )
+// Start command event handler
+bot.onText(/\/start/, (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId, 
+    `Welcome to GU_Noobieshop Bot! Please get the password from the admin:
+Contact Support: [Noobie Support](https://t.me/NoobieXNoiso)
+Join our Channel: [Noobie Channel](https://t.me/NoobieShopp)`,
+    { parse_mode: 'Markdown' }
+  );
+});
 
-# Unlock button handler
-@client.on(events.CallbackQuery(data=b'unlock'))
-async def ask_password(event):
-    await event.respond(
-        "Please enter the password to unlock the bot:",
-        buttons=[[Button.inline('Cancel', b'cancel')]]
-    )
+// Password check event handler
+bot.on('message', (msg) => {
+  const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  const text = msg.text;
 
-# Password entry handler
-@client.on(events.NewMessage)
-async def check_password(event):
-    user_id = event.sender_id
+  // If the user has already unlocked the bot
+  if (unlockedUsers[userId]) {
+    // User can now enter a group or channel URL to fetch usernames
+    bot.sendMessage(chatId, "Please enter the group URL to fetch usernames.");
+  } else if (BOT_PASSWORDS.includes(text)) {
+    // If the user enters the correct password
+    unlockedUsers[userId] = true;
+    bot.sendMessage(chatId, "✅ Bot unlocked successfully! Please enter the group or channel URL to fetch usernames:");
+  } else {
+    // Invalid password
+    bot.sendMessage(chatId, "Incorrect password, please try again.");
+  }
+});
 
-    # If the user has already unlocked the bot
-    if unlocked_users.get(user_id):
-        await event.respond("Please enter the group URL to fetch usernames.")
-        return
+// Cancel action if necessary (you can add this feature with custom keyboard or inline buttons)
+// Fetch Usernames from Group or Channel (Not directly supported in node-telegram-bot-api, so this requires Telegram's API)
+bot.onText(/http(s?):\/\/t\.me\/(.+)/, async (msg) => {
+  const chatId = msg.chat.id;
+  const groupUrl = msg.text.trim();
+  const userId = msg.from.id;
 
-    # If the user enters the correct password
-    if event.text in BOT_PASSWORDS:
-        unlocked_users[user_id] = True
-        await event.respond(
-            "✅ Bot unlocked successfully! Please enter the group or channel URL to fetch usernames:"
-        )
-    else:
-        await event.respond("Please try again or press 'Cancel'.")
+  if (unlockedUsers[userId]) {
+    try {
+      const groupUsername = groupUrl.split('/').pop(); // Extract the username from URL
+      const members = await bot.getChatMembersCount(groupUsername); // Get the number of members
 
-# Cancel button handler
-@client.on(events.CallbackQuery(data=b'cancel'))
-async def cancel(event):
-    await event.respond("Action cancelled. Type /start to try again.")
-
-# Fetch Usernames from Group or Channel
-@client.on(events.NewMessage)
-async def fetch_usernames(event):
-    user_id = event.sender_id
-
-    if unlocked_users.get(user_id):
-        group_url = event.text.strip()
-
-        # Attempt to resolve the group URL to a username or ID
-        try:
-            group = await client.get_entity(group_url)
-            if isinstance(group, (PeerChannel, Channel)):
-                usernames = []
-                async for member in client.iter_participants(group):
-                    if member.username:
-                        usernames.append(f"@{member.username}")  # Format as @username
-
-                # Check if usernames list is empty
-                if usernames:
-                    await send_long_message(event, "Usernames:\n" + "\n".join(usernames))
-                else:
-                    await event.respond("No usernames found in this group or channel.")
-            else:
-                await event.respond("The provided link is not a valid group or channel URL.")
-        except Exception:
-            # Do not provide a specific error message
-            await event.respond("Please check the group/channel link.")
-    else:
-        await event.respond("Please unlock the bot first by typing /start.")
-
-# Function to send long messages in chunks
-async def send_long_message(event, message):
-    max_length = 4096
-    for i in range(0, len(message), max_length):
-        await event.respond(message[i:i + max_length])
-
-# Run the bot
-if __name__ == "__main__":
-    client.run_until_disconnected()
+      if (members > 0) {
+        bot.sendMessage(chatId, `Group/Channel has ${members} members.`);
+      } else {
+        bot.sendMessage(chatId, "No usernames found or unable to retrieve members.");
+      }
+    } catch (error) {
+      bot.sendMessage(chatId, "Invalid group or channel URL.");
+    }
+  } else {
+    bot.sendMessage(chatId, "Please unlock the bot first by typing /start.");
+  }
+});
